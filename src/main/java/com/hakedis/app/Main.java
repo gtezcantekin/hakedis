@@ -988,8 +988,9 @@ public class Main {
             if (kapasite.compareTo(BigDecimal.ZERO) <= 0) continue;
 
 
+            LocalDate sonDonem = h.getTarih().minusMonths(1).withDayOfMonth(1);
             BigDecimal atanacak;
-            if (ip.getDonem().isEqual(h.getTarih().minusMonths(1).withDayOfMonth(1))) {
+            if (ip.getDonem().isEqual(sonDonem)) {
                 atanacak = kalanHakedis;
             } else {
                 atanacak = kalanHakedis.min(kapasite);
@@ -1030,7 +1031,7 @@ public class Main {
 
         }
 
-// ✅ Kural: kalan para cutoff sonrası aylara dağıtılmayacak, son dönemde kalacak
+//  Kural: kalan para cutoff sonrası aylara dağıtılmayacak, son dönemde kalacak
         if (kalanHakedis.compareTo(BigDecimal.ZERO) > 0) {
 
             System.out.println("kalan hakediş son" + kalanHakedis);
