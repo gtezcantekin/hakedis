@@ -40,6 +40,7 @@ public class Main {
         EndeksDegerDao edDao = new EndeksDegerDao();
         AkaryakitDegerDao akarDao = new AkaryakitDegerDao();
         FiyatFarkiDao ffDao = new FiyatFarkiDao();
+        FiyatFarkiOzetDao ffoDao = new FiyatFarkiOzetDao();
 
 
         while (true) {
@@ -81,7 +82,7 @@ public class Main {
                 case "11" -> kesifArtisiEkle(scanner, kaDao, iDao, hDao);
                 case "12" -> yapilanIslerListesi(scanner, bfDao, mDao, hDao, iDao, revDao, icmalDao);
                 case "13" -> icmalToplamlar(scanner, hDao, iDao, icmalDao, hoDao);
-                case "14" -> fiyatFarki(scanner, hDao, iDao, icmalDao, hoDao, ffDao, ipDao, akDao);
+                case "14" -> fiyatFarki(scanner, hDao, iDao, icmalDao, hoDao, ffDao, ipDao, akDao, ffoDao);
                 case "15" -> hakedisRapor(scanner, bfDao, mDao, hDao, iDao, suzaDao, kaDao, revDao, icmalDao);
                 case "0" -> {
                     System.out.println("Çıkış yapıldı");
@@ -831,13 +832,13 @@ public class Main {
 
                     BigDecimal revToplamTutar = BedelHesaplama.satirTutar(revToplam, revizeFiyat);
 
-                    BigDecimal oncekiHakNo = BigDecimal.valueOf(h.getHakedisNo()-1);
+                    BigDecimal oncekiHakNo = BigDecimal.valueOf(h.getHakedisNo() - 1);
 
-                    BigDecimal revizeBFiyat = revDao.findFormulBf(isId,oncekiHakNo.intValue(),bf.getId());
+                    BigDecimal revizeBFiyat = revDao.findFormulBf(isId, oncekiHakNo.intValue(), bf.getId());
 
                     BigDecimal revOncekiTutar;
 
-                    if ( revizeBFiyat != null  ) {
+                    if (revizeBFiyat != null) {
                         revOncekiTutar = BedelHesaplama.satirTutar(revOnceki, revizeBFiyat);
                     } else {
                         revOncekiTutar = BedelHesaplama.satirTutar(oncekiMiktar, bf.getTutari()).subtract(norOncekiTutar);
@@ -930,7 +931,8 @@ public class Main {
                                   HakedisOzetDao hoDao,
                                   FiyatFarkiDao ffDao,
                                   IsProgramiDao ipDao,
-                                  AgirlikKatsayisiDao akDao) {
+                                  AgirlikKatsayisiDao akDao,
+                                  FiyatFarkiOzetDao ffoDao) {
 
         System.out.println("İş id : ");
         int isId = Integer.parseInt(scanner.nextLine().trim());
@@ -956,15 +958,13 @@ public class Main {
         LocalDate hakTarih = h.getTarih();
         LocalDate cutoff = hakTarih.minusMonths(1).withDayOfMonth(1);
 
-// aynı hakNo için önce sil
-        ffDao.deleteByIsIdAndHakNo(isId, hakNo);
 
 // önceki hakediş kayıtları (hakNo'dan küçük) - SUM yok, Java ile toplayacağız
-        List<FiyatFarki> oncekiKayitlar = ffDao.findOncekilerByIsIdBeforeHakNo(isId, hakNo);
+        List<FiyatFarkiOzet> oncekiKayitlar = ffoDao.findOncekilerByIsIdBeforeHakNo(isId, hakNo);
 
         Map<Long, BigDecimal> oncekiToplamMap = new HashMap<>();
-        for (FiyatFarki k : oncekiKayitlar) {
-            long ipId = k.getIsprogramId();
+        for (FiyatFarkiOzet k : oncekiKayitlar) {
+            long ipId = k.getIsprogramiId();
             BigDecimal tutar = (k.getHakedisTutar() != null) ? k.getHakedisTutar() : BigDecimal.ZERO;
             oncekiToplamMap.put(ipId, oncekiToplamMap.getOrDefault(ipId, BigDecimal.ZERO).add(tutar));
         }
@@ -972,26 +972,29 @@ public class Main {
 // iş programı listesi
         List<IsProgrami> isProgramiList = ipDao.findByIsId(isId);
 
-// cutoff'a kadar olan son ip'yi hatırlayacağız
-        IsProgrami sonUygunIp = null;
+// cutoff'a kadar olan son iş programını hatırlayacağız
+        IsProgrami sonUygunIsProgDonem = null;
 
         for (IsProgrami ip : isProgramiList) {
 
-            if (ip.getDonem() == null) continue;
             if (ip.getDonem().isAfter(cutoff)) continue; // cutoff sonrası dağıtma yok
 
-            if (ip.getAylikTutar() == null) continue;
-
-            sonUygunIp = ip; // en son geçerli ip
+            sonUygunIsProgDonem = ip; // en son geçerli ip
 
             if (kalanHakedis.compareTo(BigDecimal.ZERO) <= 0) break;
 
             BigDecimal oncekiToplam = oncekiToplamMap.getOrDefault(ip.getId(), BigDecimal.ZERO);
             BigDecimal kapasite = ip.getAylikTutar().subtract(oncekiToplam);
-
             if (kapasite.compareTo(BigDecimal.ZERO) <= 0) continue;
 
-            BigDecimal atanacak = kalanHakedis.min(kapasite);
+
+            BigDecimal atanacak;
+            if (ip.getDonem().isEqual(h.getTarih().minusMonths(1).withDayOfMonth(1))) {
+                atanacak = kalanHakedis;
+            } else {
+                atanacak = kalanHakedis.min(kapasite);
+            }
+
 
             FiyatFarki ff = new FiyatFarki();
             ff.setIsId(isId);
@@ -1001,7 +1004,7 @@ public class Main {
             ff.setIsProgramiDonem(ip.getDonem());
             ff.setIsProgramiTutar(ip.getAylikTutar());
             ff.setHakedisTutar(atanacak);
-
+/*
             // B katsayısı = 0,9
 
             BigDecimal B = BigDecimal.valueOf(0.9);
@@ -1019,35 +1022,57 @@ public class Main {
             System.out.println("en küçük değer : " + min);
             System.out.println("********************************");
 
-
+*/
             ffDao.saveOrUpdate(ff);
 
             kalanHakedis = kalanHakedis.subtract(atanacak);
             oncekiToplamMap.put(ip.getId(), oncekiToplam.add(atanacak));
+
         }
 
 // ✅ Kural: kalan para cutoff sonrası aylara dağıtılmayacak, son dönemde kalacak
         if (kalanHakedis.compareTo(BigDecimal.ZERO) > 0) {
 
-            if (sonUygunIp == null) {
+            System.out.println("kalan hakediş son" + kalanHakedis);
+            if (sonUygunIsProgDonem == null) {
                 System.out.println("Uyarı: Hakediş için cutoff'a kadar iş programı dönemi yok. Kalan: " + kalanHakedis);
             } else {
 
-                // kalan parayı sonUygunIp'ye ekstra satır olarak ekle (kapasite aşabilir)
+                // kalan parayı sonUygunIsProgDonem'e ekstra satır olarak ekle (kapasite aşabilir)
                 FiyatFarki ffKalan = new FiyatFarki();
                 ffKalan.setIsId(isId);
                 ffKalan.setHakedisId(h.getId());
-                ffKalan.setIsprogramId(sonUygunIp.getId());
+                ffKalan.setIsprogramId(sonUygunIsProgDonem.getId());
                 ffKalan.setHakedisNo(hakNo);
-                ffKalan.setIsProgramiDonem(sonUygunIp.getDonem());
-                ffKalan.setIsProgramiTutar(sonUygunIp.getAylikTutar());
+                ffKalan.setIsProgramiDonem(sonUygunIsProgDonem.getDonem());
+                ffKalan.setIsProgramiTutar(sonUygunIsProgDonem.getAylikTutar());
                 ffKalan.setHakedisTutar(kalanHakedis);
 
                 ffDao.saveOrUpdate(ffKalan);
 
                 kalanHakedis = BigDecimal.ZERO;
             }
+
         }
+
+        List<FiyatFarki> kayitListesi = ffDao.findByIsIdAndHakNo(isId, hakNo);
+
+
+        for (FiyatFarki fiyatFarki : kayitListesi) {
+
+            FiyatFarkiOzet fiyatFarkiOzet = new FiyatFarkiOzet();
+            fiyatFarkiOzet.setIsId(isId);
+            fiyatFarkiOzet.setHakedisId(h.getId());
+            fiyatFarkiOzet.setIsprogramiId(fiyatFarki.getIsprogramId());
+            fiyatFarkiOzet.setHakedisNo(hakNo);
+            fiyatFarkiOzet.setIsprogramiDonem(fiyatFarki.getIsProgramiDonem());
+            fiyatFarkiOzet.setIsprogramiTutar(fiyatFarki.getIsProgramiTutar());
+            fiyatFarkiOzet.setHakedisTutar(fiyatFarki.getHakedisTutar());
+
+            ffoDao.insert(fiyatFarkiOzet);
+
+        }
+        ffDao.deleteByIsIdAndHakNo(isId,hakNo);
 
     }
 
@@ -1271,15 +1296,14 @@ public class Main {
                     BigDecimal revBu = revToplam.subtract(revOnceki);
 
 
-
                     BigDecimal revToplamTutar = BedelHesaplama.satirTutar(revToplam, revizeFiyat);
-                    BigDecimal oncekiHakNo = BigDecimal.valueOf(h.getHakedisNo()-1);
+                    BigDecimal oncekiHakNo = BigDecimal.valueOf(h.getHakedisNo() - 1);
 
-                    BigDecimal revizeBFiyat = revDao.findFormulBf(isId,oncekiHakNo.intValue(),bf.getId());
+                    BigDecimal revizeBFiyat = revDao.findFormulBf(isId, oncekiHakNo.intValue(), bf.getId());
 
                     BigDecimal revOncekiTutar;
 
-                    if ( revizeBFiyat != null  ) {
+                    if (revizeBFiyat != null) {
                         revOncekiTutar = BedelHesaplama.satirTutar(revOnceki, revizeBFiyat);
                     } else {
                         revOncekiTutar = BedelHesaplama.satirTutar(oncekiMiktar, bf.getTutari()).subtract(norOncekiTutar);
@@ -1340,98 +1364,6 @@ public class Main {
 
         System.out.println("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------");
 
-
-        AgirlikKatsayisiDao akDao = new AgirlikKatsayisiDao();
-        EndeksDegerDao edDao = new EndeksDegerDao();
-        AkaryakitDegerDao akarDao = new AkaryakitDegerDao();
-        HakedisOzetDao hoDao = new HakedisOzetDao();
-        FiyatFarkiDao ffDao = new FiyatFarkiDao();
-        IsProgramiDao ipDao = new IsProgramiDao();
-        FiyatFarkiOzetDao ffoDao = new FiyatFarkiOzetDao();
-
-
-        BigDecimal kalanHakedis = hoDao.findByIsIdAndHakNo(isId, hakNo).getBu();
-        if (kalanHakedis == null) kalanHakedis = BigDecimal.ZERO;
-
-// cutoff: hakediş tarihinin bir önceki ayı (ayın 1'i)
-        LocalDate hakTarih = h.getTarih();
-        LocalDate cutoff = hakTarih.minusMonths(1).withDayOfMonth(1);
-
-// aynı hakNo için önce sil
-        ffDao.deleteByIsIdAndHakNo(isId, hakNo);
-
-// önceki hakediş kayıtları (hakNo'dan küçük) - SUM yok, Java ile toplayacağız
-        List<FiyatFarkiOzet> oncekiKayitlar = ffoDao.findOncekilerByIsIdBeforeHakNo(isId, hakNo);
-
-        Map<Long, BigDecimal> oncekiToplamMap = new HashMap<>();
-        for (FiyatFarkiOzet k : oncekiKayitlar) {
-            long isprogramiId = k.getIsprogramiId();
-            BigDecimal hakedisTutar = (k.getHakedisTutar() != null) ? k.getHakedisTutar() : BigDecimal.ZERO;
-            oncekiToplamMap.put(isprogramiId, oncekiToplamMap.getOrDefault(isprogramiId, BigDecimal.ZERO).add(hakedisTutar));
-        }
-
-// iş programı listesi
-        List<IsProgrami> isProgramiList = ipDao.findByIsId(isId);
-
-// cutoff'a kadar olan son ip'yi hatırlayacağız
-        IsProgrami sonUygunIp = null;
-
-        for (IsProgrami ip : isProgramiList) {
-
-            if (ip.getDonem() == null) continue;
-            if (ip.getDonem().isAfter(cutoff)) continue; // cutoff sonrası dağıtma yok
-
-            if (ip.getAylikTutar() == null) continue;
-
-            sonUygunIp = ip; // en son geçerli ip
-
-            if (kalanHakedis.compareTo(BigDecimal.ZERO) <= 0) break;
-
-            BigDecimal oncekiToplami = oncekiToplamMap.getOrDefault(ip.getId(), BigDecimal.ZERO);
-            BigDecimal kapasite = ip.getAylikTutar().subtract(oncekiToplam);
-
-            if (kapasite.compareTo(BigDecimal.ZERO) <= 0) continue;
-
-            BigDecimal atanacak = kalanHakedis.min(kapasite);
-
-            FiyatFarki ff = new FiyatFarki();
-            ff.setIsId(isId);
-            ff.setHakedisId(h.getId());
-            ff.setIsprogramId(ip.getId());
-            ff.setHakedisNo(hakNo);
-            ff.setIsProgramiDonem(ip.getDonem());
-            ff.setIsProgramiTutar(ip.getAylikTutar());
-            ff.setHakedisTutar(atanacak);
-
-
-            ffDao.saveOrUpdate(ff);
-
-            kalanHakedis = kalanHakedis.subtract(atanacak);
-            oncekiToplamMap.put(ip.getId(), oncekiToplami.add(atanacak));
-        }
-
-// ✅ Kural: kalan para cutoff sonrası aylara dağıtılmayacak, son dönemde kalacak
-        if (kalanHakedis.compareTo(BigDecimal.ZERO) > 0) {
-
-            if (sonUygunIp == null) {
-                System.out.println("Uyarı: Hakediş için cutoff'a kadar iş programı dönemi yok. Kalan: " + kalanHakedis);
-            } else {
-
-                // kalan parayı sonUygunIp'ye ekstra satır olarak ekle (kapasite aşabilir)
-                FiyatFarki ffKalan = new FiyatFarki();
-                ffKalan.setIsId(isId);
-                ffKalan.setHakedisId(h.getId());
-                ffKalan.setIsprogramId(sonUygunIp.getId());
-                ffKalan.setHakedisNo(hakNo);
-                ffKalan.setIsProgramiDonem(sonUygunIp.getDonem());
-                ffKalan.setIsProgramiTutar(sonUygunIp.getAylikTutar());
-                ffKalan.setHakedisTutar(kalanHakedis);
-
-                ffDao.saveOrUpdate(ffKalan);
-
-                kalanHakedis = BigDecimal.ZERO;
-            }
-        }
     }
 }
 

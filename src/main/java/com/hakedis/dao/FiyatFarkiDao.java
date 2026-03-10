@@ -57,7 +57,6 @@ public class FiyatFarkiDao {
                     FROM fiyatfarki
                     WHERE is_id = ?
                       AND hakedisno = ?
-                    LIMIT 1
                 """;
 
         try (Connection c = JDBCHelper.getConnection();
@@ -130,14 +129,14 @@ public class FiyatFarkiDao {
     }
 
 
-    public FiyatFarki findByIsIdAndIsProgId(int isId, long isPId) {
+    public FiyatFarki findByIsIdAndHakId(int isId, int hakNo) {
 
         String sql = """
                     SELECT is_id, hakedis_id, isprogrami_id, hakedisno, isprogramidonem,
                           isprogramitutar, hakedistutar, bkatsayi, pneksibir, fiyatfarki
                     FROM fiyatfarki
                     WHERE is_id = ?
-                    AND isprogrami_id = ?
+                    AND hakedisno = ?
                     LIMIT 1
                 """;
 
@@ -145,7 +144,7 @@ public class FiyatFarkiDao {
              PreparedStatement ps = c.prepareStatement(sql)) {
 
             ps.setInt(1, isId);
-            ps.setLong(2, isPId);
+            ps.setInt(2, hakNo);
 
 
             ResultSet rs = ps.executeQuery();
@@ -198,7 +197,7 @@ public class FiyatFarkiDao {
     }
 
     public void deleteByIsIdAndHakNo(int isId, int hakNo) {
-        String sql = "DELETE FROM fiyatfarki WHERE is_id = ? AND hakedisno = ?";
+        String sql = "DELETE FROM fiyatfarki WHERE is_id = ? AND hakedisno < ?";
         try (Connection conn = JDBCHelper.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 

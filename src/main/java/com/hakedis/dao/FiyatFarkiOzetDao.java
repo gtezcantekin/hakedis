@@ -12,7 +12,7 @@ import java.util.List;
 
 public class FiyatFarkiOzetDao {
 
-    public void insert(FiyatFarkiOzet ff) {
+    public void insert(FiyatFarkiOzet ffo) {
 
         String sql =
                 "INSERT INTO fiyatfarki_ozet " +
@@ -23,30 +23,30 @@ public class FiyatFarkiOzetDao {
         try (Connection conn = JDBCHelper.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            ps.setInt(1, ff.getIsId());
-            ps.setInt(2, ff.getHakedisId());
-            ps.setLong(3, ff.getIsprogramiId());
-            ps.setInt(4, ff.getHakedisNo());
-            ps.setDate(5, Date.valueOf(ff.getIsprogramiDonem()));
-            ps.setBigDecimal(6, ff.getIsprogramiTutar());
+            ps.setInt(1, ffo.getIsId());
+            ps.setInt(2, ffo.getHakedisId());
+            ps.setLong(3, ffo.getIsprogramiId());
+            ps.setInt(4, ffo.getHakedisNo());
+            ps.setDate(5, Date.valueOf(ffo.getIsprogramiDonem()));
+            ps.setBigDecimal(6, ffo.getIsprogramiTutar());
 
-            if (ff.getHakedisTutar() != null)
-                ps.setBigDecimal(7, ff.getHakedisTutar());
+            if (ffo.getHakedisTutar() != null)
+                ps.setBigDecimal(7, ffo.getHakedisTutar());
             else
                 ps.setNull(7, Types.DECIMAL);
 
-            if (ff.getbKatSayisi() != null)
-                ps.setBigDecimal(8, ff.getbKatSayisi());
+            if (ffo.getbKatSayisi() != null)
+                ps.setBigDecimal(8, ffo.getbKatSayisi());
             else
                 ps.setNull(8, Types.DECIMAL);
 
-            if (ff.getPnEksiBir() != null)
-                ps.setBigDecimal(9, ff.getPnEksiBir());
+            if (ffo.getPnEksiBir() != null)
+                ps.setBigDecimal(9, ffo.getPnEksiBir());
             else
                 ps.setNull(9, Types.DECIMAL);
 
-            if (ff.getFiyatFarki() != null)
-                ps.setBigDecimal(10, ff.getFiyatFarki());
+            if (ffo.getFiyatFarki() != null)
+                ps.setBigDecimal(10, ffo.getFiyatFarki());
             else
                 ps.setNull(10, Types.DECIMAL);
 
@@ -170,7 +170,7 @@ public class FiyatFarkiOzetDao {
 
         return BigDecimal.ZERO;
     }
-    // 5 bir öncekii hakediş fiyat farkı
+    // 5 bir önceki hakediş fiyat farkı
     public List<FiyatFarkiOzet> findOncekilerByIsIdBeforeHakNo(int isId, int hakNo) {
         List<FiyatFarkiOzet> list = new ArrayList<>();
         String sql = "SELECT isprogrami_id, hakedistutar " +
