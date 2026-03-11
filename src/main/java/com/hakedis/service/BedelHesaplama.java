@@ -31,7 +31,10 @@ public class BedelHesaplama {
         return round(toplam);
     }
 
-    public static BigDecimal toplamMiktarByBirimFiyatByHakedis(List<Metrajlar> metrajlar, int isId, int birimFiyatId , int hakedisNo) {
+    public static BigDecimal toplamMiktarByBirimFiyatByHakedis(List<Metrajlar> metrajlar,
+                                                               int isId,
+                                                               int birimFiyatId,
+                                                               int hakedisNo) {
         BigDecimal toplam = BigDecimal.ZERO;
 
         for (Metrajlar m : metrajlar) {
