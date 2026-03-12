@@ -1129,7 +1129,6 @@ public class Main {
             fiyatFarkiOzet.setIsprogramiDonem(fiyatFarki.getIsProgramiDonem());
             fiyatFarkiOzet.setIsprogramiTutar(fiyatFarki.getIsProgramiTutar());
             fiyatFarkiOzet.setHakedisTutar(fiyatFarki.getHakedisTutar());
-            fiyatFarkiOzet.setFiyatFarki(fiyatFarki.getbKatSayisi());
             fiyatFarkiOzet.setbKatSayisi(fiyatFarki.getbKatSayisi());
             fiyatFarkiOzet.setPnEksiBir(fiyatFarki.getPnEksiBir());
             fiyatFarkiOzet.setFiyatFarki(fiyatFarki.getFiyatFarki());
