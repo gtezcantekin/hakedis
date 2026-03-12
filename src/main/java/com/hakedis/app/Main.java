@@ -82,7 +82,7 @@ public class Main {
                 case "11" -> kesifArtisiEkle(scanner, kaDao, iDao, hDao);
                 case "12" -> yapilanIslerListesi(scanner, bfDao, mDao, hDao, iDao, revDao, icmalDao);
                 case "13" -> icmalToplamlar(scanner, hDao, iDao, icmalDao, hoDao);
-                case "14" -> fiyatFarki(scanner, hDao, iDao, hoDao, ffDao, ipDao, akDao, ffoDao, edDao);
+                case "14" -> fiyatFarki(scanner, hDao, iDao, hoDao, ffDao, ipDao, akDao, ffoDao, edDao, akarDao);
                 case "15" -> hakedisRapor(scanner, bfDao, mDao, hDao, iDao, suzaDao, kaDao, revDao, icmalDao);
                 case "0" -> {
                     System.out.println("Çıkış yapıldı");
@@ -932,7 +932,8 @@ public class Main {
                                   IsProgramiDao ipDao,
                                   AgirlikKatsayisiDao akDao,
                                   FiyatFarkiOzetDao ffoDao,
-                                  EndeksDegerDao edDao) {
+                                  EndeksDegerDao edDao,
+                                  AkaryakitDegerDao akarDao) {
 
         System.out.println("İş id : ");
         int isId = Integer.parseInt(scanner.nextLine().trim());
@@ -949,6 +950,8 @@ public class Main {
             System.out.println("Hakediş bulunamadı.");
             return;
         }
+
+        final BigDecimal bKatsayisi = BigDecimal.valueOf(0.9);
 
 
         BigDecimal kalanHakedis = hoDao.findByIsIdAndHakNo(isId, hakNo).getBu();
@@ -968,6 +971,9 @@ public class Main {
             BigDecimal tutar = (k.getHakedisTutar() != null) ? k.getHakedisTutar() : BigDecimal.ZERO;
             oncekiToplamMap.put(ipId, oncekiToplamMap.getOrDefault(ipId, BigDecimal.ZERO).add(tutar));
         }
+
+        LocalDate baslangicTarihi = null;
+        LocalDate bitisTarihi = null;
 
 // iş programı listesi
         List<IsProgrami> isProgramiList = ipDao.findByIsId(isId);
@@ -995,14 +1001,48 @@ public class Main {
             } else {
                 atanacak = kalanHakedis.min(kapasite);
             }
-//
-//            //----------------------------------------------------
-//
-//            List<AgirlikKatsayisi> guncelEndeks = new ArrayList<>();
-//            int guncelYil = ip.getDonem().getYear();
-//            int guncelAy = ip.getDonem().getMonthValue();
-//            BigDecimal guncelEndex =  edDao.findDeger
-//            //----------------------------------------------------
+
+            if (hakNo == 1) {
+                baslangicTarihi = ip.getDonem();
+            } else {
+                baslangicTarihi = hDao.findHakedisTarih(isId, (hakNo - 1)).getTarih().withDayOfMonth(1);
+            }
+
+            bitisTarihi = h.getTarih().minusMonths(1).withDayOfMonth(1);
+
+            List<LocalDate> tarihListesi = new ArrayList<>();
+            LocalDate endeksAyi = baslangicTarihi;
+
+            while (!endeksAyi.isAfter(bitisTarihi)) {
+
+                tarihListesi.add(endeksAyi);
+                endeksAyi = endeksAyi.plusMonths(1);
+
+            }
+            tarihListesi.add(ip.getDonem());
+
+
+            List<AgirlikKatsayisi> guncelEndeksListesi = akDao.listByIsId(isId);
+            BigDecimal pNToplam = BigDecimal.ZERO;
+            for (AgirlikKatsayisi agirlikKatsayisi : guncelEndeksListesi) {
+
+
+                ArrayList<BigDecimal> listeGuncelEndeks = new ArrayList<>();
+                for (LocalDate localDate : tarihListesi) {
+                    BigDecimal deneme1 = edDao.findDeger(agirlikKatsayisi.getEndeksTanimId(), localDate.getYear(), localDate.getMonthValue());
+                    if (deneme1 == null) {
+                        deneme1 = akarDao.findDeger(agirlikKatsayisi.getEndeksTanimId(), localDate.getYear(), localDate.getMonthValue());
+                    }
+                    listeGuncelEndeks.add(deneme1);
+                }
+                BigDecimal min = Collections.min(listeGuncelEndeks);
+
+                BigDecimal pN = agirlikKatsayisi.getAgirlik().multiply(min.divide(agirlikKatsayisi.getTemelendeks(), 6,RoundingMode.HALF_UP));
+                pNToplam = pN.add(pNToplam);
+            }
+
+            BigDecimal pNEksiBir = pNToplam.subtract(BigDecimal.ONE).setScale(6,RoundingMode.HALF_UP);
+
 
             FiyatFarki ff = new FiyatFarki();
             ff.setIsId(isId);
@@ -1012,24 +1052,12 @@ public class Main {
             ff.setIsProgramiDonem(ip.getDonem());
             ff.setIsProgramiTutar(ip.getAylikTutar());
             ff.setHakedisTutar(atanacak);
+            ff.setbKatSayisi(bKatsayisi);
+            ff.setPnEksiBir(pNEksiBir);
 
-//            // B katsayısı = 0,9
-//
-//            BigDecimal B = BigDecimal.valueOf(0.9);
-//
-//            // Pn ve (Pn - 1)
-//
-//            System.out.println("********************************");
-//            AgirlikKatsayisi ak = akDao.findByIsId(isId);
-//            ArrayList<BigDecimal> listeGuncelEndeks = new ArrayList<>();
-//            for (AgirlikKatsayisi agirlikKatsayisi : list) {
-//                listeDeneme.add(agirlikKatsayisi.getTemelendeks());
-//                System.out.println(agirlikKatsayisi.getTemelendeks());
-//            }
-//            BigDecimal min = Collections.min(listeDeneme);
-//            System.out.println("en küçük değer : " + min);
-//            System.out.println("********************************");
+            BigDecimal fiyatFarkiSon = atanacak.multiply(bKatsayisi).multiply(pNEksiBir);
 
+            ff.setFiyatFarki(fiyatFarkiSon);
 
             ffDao.saveOrUpdate(ff);
 
@@ -1040,6 +1068,25 @@ public class Main {
 
 //  Kural: kalan para cutoff sonrası aylara dağıtılmayacak, son dönemde kalacak
         if (kalanHakedis.compareTo(BigDecimal.ZERO) > 0) {
+
+
+            List<AgirlikKatsayisi> guncelEndeksListesi = akDao.listByIsId(isId);
+            BigDecimal pNToplam = BigDecimal.ZERO;
+
+            for (AgirlikKatsayisi agirlikKatsayisi : guncelEndeksListesi) {
+                BigDecimal deneme1 = edDao.findDeger(agirlikKatsayisi.getEndeksTanimId(), h.getTarih().getYear(), h.getTarih().getMonthValue());
+                if (deneme1 == null) {
+                    deneme1 = akarDao.findDeger(agirlikKatsayisi.getEndeksTanimId(), h.getTarih().getYear(), h.getTarih().getMonthValue());
+                }
+
+                BigDecimal pN = agirlikKatsayisi.getAgirlik().multiply(deneme1.divide(agirlikKatsayisi.getTemelendeks(), 6,RoundingMode.HALF_UP));
+                pNToplam = pN.add(pNToplam);
+            }
+            BigDecimal pNEksiBir = pNToplam.subtract(BigDecimal.ONE).setScale(6,RoundingMode.HALF_UP);
+
+
+
+
 
             System.out.println("kalan hakediş son" + kalanHakedis);
             if (sonUygunIsProgDonem == null) {
@@ -1055,6 +1102,12 @@ public class Main {
                 ffKalan.setIsProgramiDonem(sonUygunIsProgDonem.getDonem());
                 ffKalan.setIsProgramiTutar(sonUygunIsProgDonem.getAylikTutar());
                 ffKalan.setHakedisTutar(kalanHakedis);
+                ffKalan.setbKatSayisi(bKatsayisi);
+                ffKalan.setPnEksiBir(pNEksiBir);
+
+                BigDecimal fiyatFarkiSon = kalanHakedis.multiply(bKatsayisi).multiply(pNEksiBir);
+
+                ffKalan.setFiyatFarki(fiyatFarkiSon);
 
                 ffDao.saveOrUpdate(ffKalan);
 
@@ -1076,6 +1129,10 @@ public class Main {
             fiyatFarkiOzet.setIsprogramiDonem(fiyatFarki.getIsProgramiDonem());
             fiyatFarkiOzet.setIsprogramiTutar(fiyatFarki.getIsProgramiTutar());
             fiyatFarkiOzet.setHakedisTutar(fiyatFarki.getHakedisTutar());
+            fiyatFarkiOzet.setFiyatFarki(fiyatFarki.getbKatSayisi());
+            fiyatFarkiOzet.setbKatSayisi(fiyatFarki.getbKatSayisi());
+            fiyatFarkiOzet.setPnEksiBir(fiyatFarki.getPnEksiBir());
+            fiyatFarkiOzet.setFiyatFarki(fiyatFarki.getFiyatFarki());
 
             ffoDao.insert(fiyatFarkiOzet);
 
@@ -1374,34 +1431,6 @@ public class Main {
 
         AgirlikKatsayisiDao akDao = new AgirlikKatsayisiDao();
 
-        // B katsayısı = 0,9
-
-        final BigDecimal B = BigDecimal.valueOf(0.9);
-
-        // Pn ve (Pn - 1)
-
-        System.out.println("********************************");
-        List<AgirlikKatsayisi> list = akDao.listByIsId(isId);
-        ArrayList<BigDecimal> listeDeneme = new ArrayList<>();
-        for (AgirlikKatsayisi agirlikKatsayisi : list) {
-            listeDeneme.add(agirlikKatsayisi.getTemelendeks());
-            System.out.println(agirlikKatsayisi.getTemelendeks());
-        }
-        BigDecimal min = Collections.min(listeDeneme);
-        System.out.println("en küçük değer : " + min);
-        System.out.println("********************************");
-
-/*
-        //----------------------------------------------------
-
-        List<AgirlikKatsayisi> guncelEndeks = new ArrayList<>();
-        int guncelYil = ip.getDonem().getYear();
-        int guncelAy = ip.getDonem().getMonthValue();
-        BigDecimal guncelEndex =  edDao.findDeger
-
-        //-----------------------------------------------------
-*/
-
         List<AgirlikKatsayisi> listed = akDao.listByIsId(isId);
         Map<Long, BigDecimal> temelEndeks = new HashMap<>();
         Map<Long, BigDecimal> guncelEndeksler = new HashMap<>();
@@ -1413,12 +1442,10 @@ public class Main {
             int guncelAy = is.getYerteslimitarihi().getMonthValue();
 
 
-
-
             EndeksDegerDao edDao = new EndeksDegerDao();
             AkaryakitDegerDao akarDao = new AkaryakitDegerDao();
 
-            BigDecimal guncelEndeks = edDao.findDeger(agirlikKatsayisi.getEndeksTanimId(), guncelYil, guncelAy);
+            BigDecimal guncelEndeks = edDao.findDeger(id, guncelYil, guncelAy);
 
             if (guncelEndeks == null) {
                 guncelEndeks = akarDao.findDeger(agirlikKatsayisi.getEndeksTanimId(), guncelYil, guncelAy);
@@ -1427,6 +1454,8 @@ public class Main {
 
 
         }
+
+
         System.out.println(temelEndeks);
 
 
